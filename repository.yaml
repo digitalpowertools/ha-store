@@ -1,0 +1,5 @@
+# Home Assistant add-on repository manifest.
+# Add this repo's URL in HA: Settings → Add-ons → ⋮ → Repositories
+name: Home Assistant add-ons
+url: https://github.com/digitalpowertools/ha-store
+maintainer: Thomas <https://github.com/digitalpowertools>

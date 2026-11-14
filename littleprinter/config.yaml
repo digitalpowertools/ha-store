@@ -1,0 +1,32 @@
+# Home Assistant add-on manifest for littleprinter.
+# Local add-on: copy this whole folder to /usr/share/hassio/addons/local/littleprinter
+name: Little Printer
+version: "1.0.0"
+slug: littleprinter
+description: BERG Little Printer server (Go sirius replacement) — bridge WebSocket, claiming and print API in one static binary.
+url: https://github.com/digitalpowtools/ha-store
+arch:
+  - armv7
+  - aarch64
+  - amd64
+init: false
+startup: services
+boot: auto
+host_network: true
+uart: false
+map:
+  - share:rw
+options:
+  port: 8080
+  token: ""
+  claim_code: ""
+  device_address: ""
+  name: "littleprinter"
+  log_debug: false
+schema:
+  port: port
+  token: str
+  claim_code: str
+  device_address: "str?"
+  name: "str?"
+  log_debug: bool
