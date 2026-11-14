@@ -1,17 +1,17 @@
 # Little Printer add-on
 
-A Home Assistant add-on packaging of the littleprinter Go server — a
-single-device replacement for the Sirius / BERG Cloud backend. The source
-in this folder **is** the add-on: HA builds the Docker image straight from
-it. See the main README for what it implements.
+A Home Assistant add-on packaging of the [littleprinter](https://github.com/digitalpowertools/ha-store)
+Go server — a single-device replacement for the Sirius / BERG Cloud
+backend. The source in this folder **is** the add-on: HA builds the Docker
+image straight from it.
 
 ## Install
 
-This add-on lives in the [`digitalpowtools/ha-store`](https://github.com/digitalpowtools/ha-store)
+This add-on lives in the [`digitalpowertools/ha-store`](https://github.com/digitalpowertools/ha-store)
 add-on repository — no file copying needed:
 
 1. On the Pi: **Settings → Add-ons → ⋮ → Repositories** → add
-   `https://github.com/digitalpowtools/ha-store`
+   `https://github.com/digitalpowertools/ha-store`
 2. **Little Printer** appears in the store → **Install** (compiles the Go
    binary on first build — be patient on a Pi)
 3. Open **Configuration** and set:
@@ -28,7 +28,8 @@ add-on repository — no file copying needed:
 The **bridge** itself, being on the same LAN, talks to the HA device
 directly — point it at the HA host (IP or a hostname your local DNS
 provides). If the flashed bridge insists on `wss://` with a valid cert,
-see `REVIVAL-GUIDE.md` for the DNS-override + TLS options.
+see the revival guide's DNS-override + TLS notes (in the private
+planning repo).
 
 ## Expose it to the tailnet (Tailscale add-on Serve)
 

@@ -4,7 +4,7 @@ name: Little Printer
 version: "1.0.0"
 slug: littleprinter
 description: BERG Little Printer server (Go sirius replacement) — bridge WebSocket, claiming and print API in one static binary.
-url: https://github.com/digitalpowtools/ha-store
+url: https://github.com/digitalpowertools/ha-store
 arch:
   - armv7
   - aarch64
