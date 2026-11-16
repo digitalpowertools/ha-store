@@ -1,6 +1,5 @@
 {
-  "listen": "127.0.0.1:5000",
-  "token": "CHANGE-ME-openssl-rand-hex-24",
+  "listen": "0.0.0.0:5000",
   "claim_code": "xxxx-xxxx-xxxx-xxxx",
   "device_address": "",
   "log_debug": false

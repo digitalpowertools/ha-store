@@ -2,7 +2,6 @@
 package api
 
 import (
-	"crypto/subtle"
 	"encoding/json"
 	"io"
 	"log"
@@ -12,6 +11,7 @@ import (
 	"littleprinter/internal/bridge"
 	"littleprinter/internal/config"
 	"littleprinter/internal/pixels"
+	"littleprinter/internal/web"
 )
 
 type Server struct {
@@ -25,6 +25,7 @@ func New(cfg *config.Config, hub *bridge.Hub) *Server {
 
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
+	web.Routes(mux)
 	mux.HandleFunc("POST /print", s.handlePrint)
 	mux.HandleFunc("GET /status", s.handleStatus)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -34,34 +35,17 @@ func (s *Server) Routes() http.Handler {
 	return mux
 }
 
-func (s *Server) auth(r *http.Request) bool {
-	tok := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if tok == "" {
-		tok = r.Header.Get("X-Token")
-	}
-	if tok == "" {
-		tok = r.URL.Query().Get("token")
-	}
-	return subtle.ConstantTimeCompare([]byte(tok), []byte(s.cfg.Token)) == 1
-}
-
 // handlePrint accepts a print job.
 //
 // Content types:
 //   - image/png, image/jpeg: scaled/cropped to the paper width, dithered
 //   - text/plain: wrapped and rendered with a bitmap font
 //
-// Query parameters:
-//   - token: alternative to the Authorization header
+//   - (none): no auth; the service is meant to be reached over Tailscale only
 //
 // The job is queued automatically when the printer is offline and
 // flushed when it reconnects; the response says which happened.
 func (s *Server) handlePrint(w http.ResponseWriter, r *http.Request) {
-	if !s.auth(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 16<<20))
 	if err != nil {
 		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
@@ -117,10 +101,6 @@ type statusResponse struct {
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	if !s.auth(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
 	st := s.hub.Status()
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(statusResponse{

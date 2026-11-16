@@ -9,12 +9,9 @@ import (
 
 type Config struct {
 	// HTTP listen address. Keep this bound to localhost (or the tailnet
-	// interface) — the bridge reaches the service via Tailscale, and the
-	// print API is protected only by a bearer token.
+	// interface) — the bridge reaches the service via Tailscale. The API is
+	// unauthenticated by design; do not expose it publicly.
 	Listen string `json:"listen"`
-
-	// Bearer token required on /print and /status.
-	Token string `json:"token"`
 
 	// The claim code printed by the printer on reset. Used to derive the
 	// encryption key handed to the bridge during pairing.
@@ -42,9 +39,6 @@ func Load(path string) (*Config, error) {
 	}
 	if c.Listen == "" {
 		c.Listen = "127.0.0.1:5000"
-	}
-	if c.Token == "" {
-		return nil, fmt.Errorf("config: token must be set")
 	}
 	if c.ClaimCode == "" {
 		return nil, fmt.Errorf("config: claim_code must be set (printed by the printer on reset)")

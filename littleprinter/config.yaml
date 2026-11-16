@@ -18,14 +18,12 @@ map:
   - share:rw
 options:
   port: 8080
-  token: ""
   claim_code: ""
   device_address: ""
   name: "littleprinter"
   log_debug: false
 schema:
   port: port
-  token: str
   claim_code: str
   device_address: "str?"
   name: "str?"

@@ -1,5 +1,14 @@
 # Little Printer add-on
 
+> [!WARNING]
+> **No authentication.** Anyone who can reach the add-on's port can print to
+> your printer. It listens on `0.0.0.0` (via host networking) precisely so
+> the Tailscale add-on can reach it — which means **it is also reachable
+> from your LAN**.
+>
+> **Do not expose it to the public internet** (no port forwarding, no public
+> reverse proxy). Keep access limited to your tailnet/LAN.
+
 A Home Assistant add-on packaging of the [littleprinter](https://github.com/digitalpowertools/ha-store)
 Go server — a single-device replacement for the Sirius / BERG Cloud
 backend. The source in this folder **is** the add-on: HA builds the Docker
@@ -16,7 +25,6 @@ add-on repository — no file copying needed:
    binary on first build — be patient on a Pi)
 3. Open **Configuration** and set:
    - `claim_code` — the code the printer prints on reset
-   - `token` — e.g. `openssl rand -hex 24`; used as bearer token for `/print`
    - `device_address` — optional; empty accepts the first device that pairs
    - `port` — defaults to `8080` (bound on the host via host networking)
 4. Start the add-on. Check its logs for
@@ -57,15 +65,17 @@ curl https://<host>.tailxxxx.ts.net/healthz
 curl http://<ha-host>:8080/healthz
 
 # print something:
-curl -X POST -H "Authorization: Bearer $TOKEN" \
-     -H "Content-Type: text/plain" \
+curl -X POST -H "Content-Type: text/plain" \
      --data "hello from Home Assistant" \
      http://<ha-host>:8080/print
 ```
 
+The API and the web UI at `/` are unauthenticated by design — they're only
+reachable inside the tailnet (or the LAN). Don't port-forward them.
+
 ## Notes
 
 - The service listens on `0.0.0.0:<port>` inside the add-on because the
-  config file is rendered from the HA options; auth is the bearer token.
+  config file is rendered from the HA options.
 - `/share/littleprinter` is mapped into the container if you ever need
   persistent scratch space; state is otherwise in memory.

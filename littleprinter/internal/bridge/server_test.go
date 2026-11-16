@@ -22,7 +22,6 @@ import (
 //  3. a print job queued while offline is flushed on device_connect
 func TestBridgeHandshakeAndPrint(t *testing.T) {
 	cfg := &config.Config{
-		Token:     "testtoken",
 		ClaimCode: "6xwh-441j-8115-zyrh", // golden vector from sirius tests
 	}
 	hub := NewHub(cfg)
