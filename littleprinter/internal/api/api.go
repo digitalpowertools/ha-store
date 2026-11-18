@@ -43,7 +43,9 @@ func (s *Server) Routes() http.Handler {
 // handlePrint accepts a print job.
 //
 // Content types:
+//
 //   - image/png, image/jpeg: scaled/cropped to the paper width, dithered
+//
 //   - text/plain: wrapped and rendered with a bitmap font
 //
 //   - (none): no auth; the service is meant to be reached over Tailscale only
@@ -51,6 +53,11 @@ func (s *Server) Routes() http.Handler {
 // The job is queued automatically when the printer is offline and
 // flushed when it reconnects; the response says which happened.
 func (s *Server) handlePrint(w http.ResponseWriter, r *http.Request) {
+	// face=no → SetDeliveryAndPrintNoFace (skip the printer's stored
+	// personality face). bubble=1 → wrap text in a speech balloon.
+	withFace := r.URL.Query().Get("face") != "no"
+	bubble := r.URL.Query().Get("bubble") == "1"
+
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 16<<20))
 	if err != nil {
 		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
@@ -68,7 +75,11 @@ func (s *Server) handlePrint(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(ct, "image/"):
 		pix, width, err = pixels.FromImage(body)
 	case strings.HasPrefix(ct, "text/"), ct == "":
-		pix, width, err = pixels.FromTextSize(string(body), s.cfg.TextSize)
+		if bubble {
+			pix, width, err = pixels.FromTextBubble(string(body), s.cfg.TextSize)
+		} else {
+			pix, width, err = pixels.FromTextSize(string(body), s.cfg.TextSize)
+		}
 	default:
 		http.Error(w, "unsupported content type "+ct, http.StatusUnsupportedMediaType)
 		return
@@ -78,7 +89,7 @@ func (s *Server) handlePrint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sent, id, err := s.hub.Print(pix, width)
+	sent, id, err := s.hub.Print(pix, width, withFace)
 	if err != nil {
 		http.Error(w, "send: "+err.Error(), http.StatusInternalServerError)
 		return

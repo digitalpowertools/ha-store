@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.2
+
+- **Face toggle**: `POST /print?face=no` (and checkboxes in the web UI)
+  send `SetDeliveryAndPrintNoFace` (0x11) — skip the printer's stored
+  personality face for a single print. Default remains face-on.
+- **Speech balloon**: `POST /print?bubble=1` (text only, plus a checkbox
+  in the web UI) renders the message inside a bordered speech balloon
+  with a tail, BERG-app style. Pure rasterization — nothing in the
+  protocol requires it.
+
 ## 1.2.1
 
 - Packaging: the supervisor now **pulls prebuilt images** from

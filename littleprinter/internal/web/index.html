@@ -57,12 +57,21 @@
   <div id="panel-text" class="panel active">
     <label for="message">Message</label>
     <textarea id="message" placeholder="Hello, printer!"></textarea>
+    <label style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink);margin-top:8px;">
+      <input type="checkbox" id="text-bubble" style="width:auto"> Speech balloon
+    </label>
+    <label style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink);">
+      <input type="checkbox" id="text-face" checked style="width:auto"> Include face
+    </label>
     <button id="print-text">Print</button>
   </div>
   <div id="panel-image" class="panel">
     <label for="image">Image (PNG / JPEG)</label>
     <input type="file" id="image" accept="image/png,image/jpeg">
     <img id="preview" class="preview" alt="" hidden>
+    <label style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink);margin-top:8px;">
+      <input type="checkbox" id="image-face" checked style="width:auto"> Include face
+    </label>
     <button id="print-image" disabled>Print</button>
   </div>
 </div>
@@ -96,11 +105,11 @@ $("image").onchange = () => {
   if (file) $("preview").src = URL.createObjectURL(file);
 };
 
-async function print(body, type, busyBtn) {
+async function print(body, type, busyBtn, params = "") {
   busyBtn.disabled = true;
   status("Sending…");
   try {
-    const res = await fetch("/print", { method: "POST", headers: { "Content-Type": type }, body });
+    const res = await fetch("/print" + params, { method: "POST", headers: { "Content-Type": type }, body });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || res.statusText);
     status(data.status === "queued" ? "Queued — printer is offline, will print on reconnect." : "Sent to printer!", "ok");
@@ -114,12 +123,16 @@ async function print(body, type, busyBtn) {
 $("print-text").onclick = () => {
   const text = $("message").value.trim();
   if (!text) { status("Type a message first.", "err"); return; }
-  print(text, "text/plain", $("print-text"));
+  let params = "?";
+  if ($("text-bubble").checked) params += "bubble=1&";
+  if (!$("text-face").checked) params += "face=no";
+  print(text, "text/plain", $("print-text"), params);
 };
 
 $("print-image").onclick = () => {
   if (!file) return;
-  print(file, file.type, $("print-image"));
+  const params = $("image-face").checked ? "" : "?face=no";
+  print(file, file.type, $("print-image"), params);
 };
 
 // Connection status

@@ -8,6 +8,7 @@ package bridge
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"sync"
@@ -250,10 +251,16 @@ func (h *Hub) sendEncryptionKey(conn *websocket.Conn, bridgeAddr, deviceAddr str
 }
 
 // Print queues or sends a print job for the given 1-bit pixels.
+// withFace selects between SetDeliveryAndPrint (printer prepends its
+// stored personality face) and SetDeliveryAndPrintNoFace.
 // Returns false if the device is not currently connected (job is queued).
-func (h *Hub) Print(pix []bool, width int) (sent bool, id uint32, err error) {
+func (h *Hub) Print(pix []bool, width int, withFace bool) (sent bool, id uint32, err error) {
 	id = h.nextCommandID()
-	binary := pixels.EncodePrint(pixels.CmdSetDeliveryAndPrint, pix, width, id)
+	cmd := pixels.CmdSetDeliveryAndPrint
+	if !withFace {
+		cmd = pixels.CmdSetDeliveryAndPrintNoFace
+	}
+	binary := pixels.EncodePrint(cmd, pix, width, id)
 
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -290,6 +297,25 @@ func (h *Hub) flushPending(conn *websocket.Conn) {
 		}
 		log.Printf("print: flushed queued job to device %s (id %d)", h.deviceAddr, id)
 	}
+}
+
+// SendBinary sends a raw encoded device command to the connected device
+// (e.g. a personality push). Fails if the device is offline.
+func (h *Hub) SendBinary(binary []byte) error {
+	id := h.nextCommandID()
+	// Re-stamp the command id (the encoder embeds it for acks).
+	binary = rewriteCommandID(binary, id)
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.conn == nil || h.deviceAddr == "" {
+		return errors.New("printer offline")
+	}
+	if err := h.conn.WriteJSON(h.deviceCommand(h.deviceAddr, binary, id)); err != nil {
+		return err
+	}
+	log.Printf("command: sent binary command to device %s (id %d)", h.deviceAddr, id)
+	return nil
 }
 
 func (h *Hub) deviceCommand(deviceAddr string, binary []byte, id uint32) map[string]any {

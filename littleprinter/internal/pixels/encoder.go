@@ -157,10 +157,13 @@ func encodePixels(pixelCount int, rle []byte) []byte {
 
 // Command IDs from encoders.encode_bridge_command.
 const (
-	CmdSetDeliveryAndPrint      uint16 = 0x1
-	CmdSetDelivery              uint16 = 0x2
+	CmdSetDeliveryAndPrint       uint16 = 0x1
+	CmdSetDelivery               uint16 = 0x2
 	CmdSetDeliveryAndPrintNoFace uint16 = 0x11
-	CmdSetDeliveryNoFace        uint16 = 0x12
+	CmdSetDeliveryNoFace         uint16 = 0x12
+	CmdSetPersonality            uint16 = 0x0102
+	CmdSetPersonalityWithMessage uint16 = 0x0101
+	CmdSetQuip                   uint16 = 0x0202
 )
 
 // encodePrinterMessage ports encoders._encode_printer_message.
@@ -189,4 +192,28 @@ func encodePrinterMessage(command uint16, payload []byte, printID uint32) []byte
 func EncodePrint(command uint16, pixels []bool, width int, printID uint32) []byte {
 	pixelCount, rle := RLEFromBW(pixels, width)
 	return encodePrinterMessage(command, encodePixels(pixelCount, rle), printID)
+}
+
+// EncodePersonality builds the binary_payload for SetPersonality
+// (0x0102, port of encoders.py's SetPersonality branch): the face,
+// nothing-to-print, cannot-see-bridge and cannot-see-internet images,
+// concatenated. The printer stores these and uses them on every print.
+func EncodePersonality(face, nothing, noBridge, noInternet []bool, width int, printID uint32) []byte {
+	var payload []byte
+	for _, pix := range [][]bool{face, nothing, noBridge, noInternet} {
+		pixelCount, rle := RLEFromBW(pix, width)
+		payload = append(payload, encodePixels(pixelCount, rle)...)
+	}
+	return encodePrinterMessage(CmdSetPersonality, payload, printID)
+}
+
+// EncodePersonalityWithMessage builds SetPersonalityWithMessage (0x0101):
+// the personality images followed by a single message.
+func EncodePersonalityWithMessage(face, nothing, noBridge, noInternet, message []bool, width int, printID uint32) []byte {
+	var payload []byte
+	for _, pix := range [][]bool{face, nothing, noBridge, noInternet, message} {
+		pixelCount, rle := RLEFromBW(pix, width)
+		payload = append(payload, encodePixels(pixelCount, rle)...)
+	}
+	return encodePrinterMessage(CmdSetPersonalityWithMessage, payload, printID)
 }
