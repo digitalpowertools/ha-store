@@ -69,6 +69,11 @@ func (h *Hub) Status() Status {
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
+	// The bridge's ws4py client sends "Origin: <full ws url>" (with port)
+	// but "Host: <host>" (without port), so gorilla's default same-origin
+	// check always fails with 403. Accept all origins: the endpoint is
+	// LAN-only and carries no credentials.
+	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
 // HandleWS is the /bridge endpoint. The first message must be a
