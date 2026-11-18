@@ -28,6 +28,11 @@ func (s *Server) Routes() http.Handler {
 	web.Routes(mux)
 	mux.HandleFunc("POST /print", s.handlePrint)
 	mux.HandleFunc("GET /status", s.handleStatus)
+	// The BERG Cloud Bridge is hard-coded to connect to /api/v1/connection
+	// (any path in its configured server URL is ignored). /bridge is the
+	// documented alias.
+	mux.HandleFunc("GET /bridge", s.hub.HandleWS)
+	mux.HandleFunc("GET /api/v1/connection", s.hub.HandleWS)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
