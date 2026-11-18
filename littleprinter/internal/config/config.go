@@ -31,6 +31,12 @@ type Config struct {
 	// template used 30). 0 selects the default.
 	TextSize float64 `json:"text_size,omitempty"`
 
+	// PersonalityDir is where the four SetPersonality images are stored
+	// (face.png, nothing_to_print.png, cannot_see_bridge.png,
+	// cannot_see_internet.png). Empty disables stored-personality
+	// pushes (the /personality API still works without persistence).
+	PersonalityDir string `json:"personality_dir,omitempty"`
+
 	LogDebug bool `json:"log_debug"`
 }
 

@@ -6,6 +6,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"littleprinter/internal/bridge"
@@ -28,6 +30,9 @@ func (s *Server) Routes() http.Handler {
 	web.Routes(mux)
 	mux.HandleFunc("POST /print", s.handlePrint)
 	mux.HandleFunc("GET /status", s.handleStatus)
+	mux.HandleFunc("POST /personality", s.handlePersonalityUpload)
+	mux.HandleFunc("POST /personality/push", s.handlePersonalityPush)
+	mux.HandleFunc("GET /personality", s.handlePersonalityStatus)
 	// The BERG Cloud Bridge is hard-coded to connect to /api/v1/connection
 	// (any path in its configured server URL is ignored). /bridge is the
 	// documented alias.
@@ -106,6 +111,110 @@ func (s *Server) handlePrint(w http.ResponseWriter, r *http.Request) {
 		"status": status,
 		"id":     id,
 	})
+}
+
+// --- personality ---
+
+// personalitySlotFiles maps the wire slot names to storage file names.
+var personalitySlotFiles = map[string]string{
+	"face":                "face.png",
+	"nothing_to_print":    "nothing_to_print.png",
+	"cannot_see_bridge":   "cannot_see_bridge.png",
+	"cannot_see_internet": "cannot_see_internet.png",
+}
+
+// handlePersonalityUpload accepts a multipart form with four images
+// (face, nothing_to_print, cannot_see_bridge, cannot_see_internet),
+// dithers them, pushes SetPersonality to the printer, and stores the
+// PNGs so they survive restarts and are re-pushed on device connect.
+func (s *Server) handlePersonalityUpload(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		http.Error(w, "parse multipart form: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	stored := make(map[string][]byte)
+	var slots [][]bool
+	width := pixels.PaperWidth
+	for _, slot := range []string{"face", "nothing_to_print", "cannot_see_bridge", "cannot_see_internet"} {
+		headers, ok := r.MultipartForm.File[slot]
+		if !ok || len(headers) != 1 {
+			http.Error(w, "missing image for slot "+slot, http.StatusBadRequest)
+			return
+		}
+		f, err := headers[0].Open()
+		if err != nil {
+			http.Error(w, "open "+slot+": "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		data, err := io.ReadAll(f)
+		f.Close()
+		if err != nil {
+			http.Error(w, "read "+slot+": "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		pix, imgW, err := pixels.FromImage(data)
+		if err != nil {
+			http.Error(w, "decode "+slot+": "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		pix, imgW = pixels.PadWidth(pix, imgW, pixels.PaperWidth)
+		width = imgW
+		slots = append(slots, pix)
+		stored[slot] = data
+	}
+
+	if err := s.hub.PushPersonality(slots[0], slots[1], slots[2], slots[3], width); err != nil {
+		http.Error(w, "push: "+err.Error(), http.StatusConflict)
+		return
+	}
+
+	if s.cfg.PersonalityDir != "" {
+		if err := os.MkdirAll(s.cfg.PersonalityDir, 0o755); err != nil {
+			http.Error(w, "create personality dir: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		for slot, data := range stored {
+			name := personalitySlotFiles[slot]
+			if err := os.WriteFile(filepath.Join(s.cfg.PersonalityDir, name), data, 0o644); err != nil {
+				log.Printf("personality: store %s: %v", name, err)
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"status": "pushed"})
+}
+
+// handlePersonalityPush re-pushes the stored personality (after a
+// printer reset, say).
+func (s *Server) handlePersonalityPush(w http.ResponseWriter, r *http.Request) {
+	imgs, width, err := s.hub.LoadStoredPersonality()
+	if err != nil {
+		http.Error(w, "no stored personality: "+err.Error(), http.StatusNotFound)
+		return
+	}
+	if err := s.hub.PushPersonality(imgs[0], imgs[1], imgs[2], imgs[3], width); err != nil {
+		http.Error(w, "push: "+err.Error(), http.StatusConflict)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"status": "pushed"})
+}
+
+// handlePersonalityStatus reports which personality images are stored.
+func (s *Server) handlePersonalityStatus(w http.ResponseWriter, r *http.Request) {
+	stored := map[string]bool{}
+	if s.cfg.PersonalityDir != "" {
+		for slot, name := range personalitySlotFiles {
+			if _, err := os.Stat(filepath.Join(s.cfg.PersonalityDir, name)); err == nil {
+				stored[slot] = true
+			}
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"stored": stored})
 }
 
 type statusResponse struct {

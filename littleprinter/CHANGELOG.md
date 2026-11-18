@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.2.3
+
+- **Custom personalities**: new Personality tab in the web UI (and
+  `POST /personality` API) to upload the four images the printer stores
+  in its flash — face, "nothing to print", "cannot see bridge",
+  "cannot see internet". Ported from sirius's `SetPersonality` (0x0102)
+  encoder branch (sirius had the protocol support but no upload UI).
+- Stored under `/data/personality` and **re-pushed automatically every
+  time the printer reconnects** (survives printer resets and add-on
+  restarts). `POST /personality/push` re-pushes manually.
+- Note: like the original BERG app, pushing replaces the BERG-era
+  faces — upload the originals if you want to keep them.
+
 ## 1.2.2
 
 - **Face toggle**: `POST /print?face=no` (and checkboxes in the web UI)

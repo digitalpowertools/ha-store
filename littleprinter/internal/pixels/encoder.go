@@ -207,6 +207,21 @@ func EncodePersonality(face, nothing, noBridge, noInternet []bool, width int, pr
 	return encodePrinterMessage(CmdSetPersonality, payload, printID)
 }
 
+// PadWidth pads 1-bit pixels with white columns up to target width.
+// Personality images are expected to span the full paper width; uploads
+// narrower than that are padded rather than rejected.
+func PadWidth(pix []bool, width, target int) ([]bool, int) {
+	if width >= target {
+		return pix, width
+	}
+	out := make([]bool, 0, len(pix)/width*target)
+	for row := 0; row*width < len(pix); row++ {
+		out = append(out, pix[row*width:(row+1)*width]...)
+		out = append(out, make([]bool, target-width)...)
+	}
+	return out, target
+}
+
 // EncodePersonalityWithMessage builds SetPersonalityWithMessage (0x0101):
 // the personality images followed by a single message.
 func EncodePersonalityWithMessage(face, nothing, noBridge, noInternet, message []bool, width int, printID uint32) []byte {

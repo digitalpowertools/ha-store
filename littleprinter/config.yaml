@@ -2,7 +2,7 @@
 # Published as prebuilt images to ghcr.io (see .github/workflows/docker.yml) —
 # the supervisor pulls instead of compiling on-device.
 name: Little Printer
-version: "1.2.2"
+version: "1.2.3"
 slug: littleprinter
 description: BERG Little Printer server (Go sirius replacement) — bridge WebSocket, claiming and print API in one static binary.
 url: https://github.com/digitalpowertools/ha-store
@@ -24,6 +24,7 @@ options:
   device_address: ""
   name: "littleprinter"
   text_size: 30
+  personality_dir: "/data/personality"
   log_debug: false
 schema:
   port: port
@@ -31,4 +32,5 @@ schema:
   device_address: "str?"
   name: "str?"
   text_size: "int?"
+  personality_dir: "str?"
   log_debug: bool

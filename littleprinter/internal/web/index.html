@@ -51,6 +51,7 @@
 <div class="tabs">
   <button id="tab-text" class="active">Text</button>
   <button id="tab-image">Image</button>
+  <button id="tab-personality">Personality</button>
 </div>
 
 <div class="card">
@@ -74,6 +75,24 @@
     </label>
     <button id="print-image" disabled>Print</button>
   </div>
+  <div id="panel-personality" class="panel">
+    <p style="font-size:13px;color:#555;margin:4px 0 12px;">
+      The four personality images stored in the printer (384px wide
+      recommended). Pushing replaces the BERG-era faces in the printer's
+      flash, and they are re-pushed automatically whenever the printer
+      reconnects.
+    </p>
+    <label for="p-face">Face</label>
+    <input type="file" id="p-face" accept="image/png,image/jpeg">
+    <label for="p-nothing" style="margin-top:10px;">"Nothing to print" face</label>
+    <input type="file" id="p-nothing" accept="image/png,image/jpeg">
+    <label for="p-nobridge" style="margin-top:10px;">"Cannot see bridge" face</label>
+    <input type="file" id="p-nobridge" accept="image/png,image/jpeg">
+    <label for="p-nointernet" style="margin-top:10px;">"Cannot see internet" face</label>
+    <input type="file" id="p-nointernet" accept="image/png,image/jpeg">
+    <button id="push-personality">Upload &amp; push</button>
+    <button id="repush-personality" style="background:transparent;color:var(--ink);border:1px solid #bbb;">Re-push stored</button>
+  </div>
 </div>
 
 <div id="status"></div>
@@ -87,12 +106,12 @@ const status = (msg, cls) => {
 };
 
 // Tabs
-for (const id of ["text", "image"]) {
+for (const id of ["text", "image", "personality"]) {
   $("tab-" + id).onclick = () => {
-    $("tab-text").classList.toggle("active", id === "text");
-    $("tab-image").classList.toggle("active", id === "image");
-    $("panel-text").classList.toggle("active", id === "text");
-    $("panel-image").classList.toggle("active", id === "image");
+    for (const t of ["text", "image", "personality"]) {
+      $("tab-" + t).classList.toggle("active", t === id);
+      $("panel-" + t).classList.toggle("active", t === id);
+    }
   };
 }
 
@@ -133,6 +152,44 @@ $("print-image").onclick = () => {
   if (!file) return;
   const params = $("image-face").checked ? "" : "?face=no";
   print(file, file.type, $("print-image"), params);
+};
+
+// Personality
+$("push-personality").onclick = async () => {
+  const btn = $("push-personality");
+  const fd = new FormData();
+  const slots = { "p-face": "face", "p-nothing": "nothing_to_print", "p-nobridge": "cannot_see_bridge", "p-nointernet": "cannot_see_internet" };
+  for (const [el, slot] of Object.entries(slots)) {
+    const f = $(el).files[0];
+    if (!f) { status("Missing image: " + slot, "err"); return; }
+    fd.append(slot, f);
+  }
+  btn.disabled = true;
+  status("Pushing personality…");
+  try {
+    const res = await fetch("/personality", { method: "POST", body: fd });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+    status("Personality pushed — the printer now uses it for every print.", "ok");
+  } catch (err) {
+    status("Failed: " + err.message, "err");
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+$("repush-personality").onclick = async () => {
+  const btn = $("repush-personality");
+  btn.disabled = true;
+  status("Re-pushing stored personality…");
+  try {
+    const res = await fetch("/personality/push", { method: "POST" });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+    status("Re-pushed.", "ok");
+  } catch (err) {
+    status("Failed: " + err.message, "err");
+  } finally {
+    btn.disabled = false;
+  }
 };
 
 // Connection status

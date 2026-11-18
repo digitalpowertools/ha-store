@@ -9,8 +9,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -163,6 +166,7 @@ func (h *Hub) handleEvent(conn *websocket.Conn, env *envelope) {
 				h.sendEncryptionKey(conn, env.BridgeAddress, env.JSONPayload.DeviceAddress)
 			}
 			h.flushPending(conn)
+			h.pushStoredPersonality(conn)
 		case "device_disconnect":
 			log.Printf("bridge: device %s disconnected", env.JSONPayload.DeviceAddress)
 		case "power_on":
@@ -299,6 +303,18 @@ func (h *Hub) flushPending(conn *websocket.Conn) {
 	}
 }
 
+// personality image slots, in wire order (sirius's SetPersonality
+// branch of encoders.encode_bridge_command).
+var personalitySlots = []string{"face", "nothing_to_print", "cannot_see_bridge", "cannot_see_internet"}
+
+// PushPersonality sends SetPersonality (0x0102) with the four given
+// 1-bit images (all width pixels wide). Fails if the printer is offline.
+func (h *Hub) PushPersonality(face, nothing, noBridge, noInternet []bool, width int) error {
+	binary := pixels.EncodePersonality(face, nothing, noBridge, noInternet, width, 0)
+	// SendBinary re-stamps the command id.
+	return h.SendBinary(binary)
+}
+
 // SendBinary sends a raw encoded device command to the connected device
 // (e.g. a personality push). Fails if the device is offline.
 func (h *Hub) SendBinary(binary []byte) error {
@@ -316,6 +332,55 @@ func (h *Hub) SendBinary(binary []byte) error {
 	}
 	log.Printf("command: sent binary command to device %s (id %d)", h.deviceAddr, id)
 	return nil
+}
+
+// personalityFileNames maps the four slots to file names under the
+// configured personality directory.
+var personalityFileNames = map[string]string{
+	"face":                "face.png",
+	"nothing_to_print":    "nothing_to_print.png",
+	"cannot_see_bridge":   "cannot_see_bridge.png",
+	"cannot_see_internet": "cannot_see_internet.png",
+}
+
+// LoadStoredPersonality reads the personality images from
+// cfg.PersonalityDir. Returns nil if the directory or any image is
+// missing (personality is then simply not pushed).
+func (h *Hub) LoadStoredPersonality() ([][]bool, int, error) {
+	if h.cfg.PersonalityDir == "" {
+		return nil, 0, errors.New("personality storage not configured")
+	}
+	var imgs [][]bool
+	width := pixels.PaperWidth
+	for _, slot := range personalitySlots {
+		data, err := os.ReadFile(filepath.Join(h.cfg.PersonalityDir, personalityFileNames[slot]))
+		if err != nil {
+			return nil, 0, err
+		}
+		pix, w, err := pixels.FromImage(data)
+		if err != nil {
+			return nil, 0, fmt.Errorf("%s: %w", personalityFileNames[slot], err)
+		}
+		pix, w = pixels.PadWidth(pix, w, pixels.PaperWidth)
+		width = w
+		imgs = append(imgs, pix)
+	}
+	return imgs, width, nil
+}
+
+// pushStoredPersonality loads and sends the stored personality, if any.
+func (h *Hub) pushStoredPersonality(conn *websocket.Conn) {
+	imgs, width, err := h.LoadStoredPersonality()
+	if err != nil {
+		return // not configured or incomplete: silently skip
+	}
+	id := h.nextCommandID()
+	binary := rewriteCommandID(pixels.EncodePersonality(imgs[0], imgs[1], imgs[2], imgs[3], width, 0), id)
+	if err := conn.WriteJSON(h.deviceCommand(h.deviceAddr, binary, id)); err != nil {
+		log.Printf("personality: push failed: %v", err)
+		return
+	}
+	log.Printf("personality: pushed stored personality to device %s (id %d)", h.deviceAddr, id)
 }
 
 func (h *Hub) deviceCommand(deviceAddr string, binary []byte, id uint32) map[string]any {
