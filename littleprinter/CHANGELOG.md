@@ -75,3 +75,12 @@
 - Config rendered from HA add-on options into `/data/config.json` at start.
 - Host networking with configurable port (default 8080), designed to pair
   with the Tailscale add-on Serve feature.
+
+## 1.2.4
+
+- Fix speech-balloon rendering: the text canvas's white margins were
+  painted over the bubble's right/bottom border, and a bad inset
+  parameter (4 instead of 0.12) mirrored the white inner tail triangle
+  through the centroid, erasing the tail and notching the border.
+  Text is now cropped to its ink bounding box and the bubble is sized
+  from it.

@@ -145,7 +145,10 @@ func FromTextBubble(text string, size float64) (pix []bool, width int, err error
 	if err != nil {
 		return nil, 0, err
 	}
-	tw, th := textImg.Bounds().Dx(), textImg.Bounds().Dy()
+	// Crop to the actual ink: blitting the full canvas would paint its
+	// white margins over the bubble border.
+	bbox := contentBBox(textImg)
+	tw, th := bbox.Dx(), bbox.Dy()
 
 	height := topPad + 2*border + 2*pad + th + border + tailH + botPad
 	if height > maxHeight {
@@ -164,7 +167,7 @@ func FromTextBubble(text string, size float64) (pix []bool, width int, err error
 	fillRect(canvas, rect.Inset(border), image.White)
 	draw.Draw(canvas,
 		image.Rect(bx0+border+pad, by0+border+pad, bx0+border+pad+tw, by0+border+pad+th),
-		textImg, image.Point{}, draw.Src)
+		textImg, bbox.Min, draw.Src)
 	for _, c := range []image.Point{
 		{bx0, by0}, {bx1, by0}, {bx0, by1}, {bx1, by1},
 	} {
@@ -179,11 +182,42 @@ func FromTextBubble(text string, size float64) (pix []bool, width int, err error
 		{bx0 + 30, by1 + tailH},
 	}
 	fillTriangle(canvas, outer, image.Black)
-	fillTriangle(canvas, insetTriangle(outer, 4), image.White)
+	fillTriangle(canvas, insetTriangle(outer, 0.12), image.White)
 
 	// Round-trip through the image path; dithering of bilevel content
 	// is lossless.
 	return FromImage(encodePNG(canvas))
+}
+
+// contentBBox returns the smallest rectangle containing all non-white
+// pixels of img.
+func contentBBox(img *image.RGBA) image.Rectangle {
+	b := img.Bounds()
+	minX, minY := b.Max.X, b.Max.Y
+	maxX, maxY := b.Min.X-1, b.Min.Y-1
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			r, g, bl, _ := img.At(x, y).RGBA()
+			if r != 0xffff || g != 0xffff || bl != 0xffff {
+				if x < minX {
+					minX = x
+				}
+				if x > maxX {
+					maxX = x
+				}
+				if y < minY {
+					minY = y
+				}
+				if y > maxY {
+					maxY = y
+				}
+			}
+		}
+	}
+	if maxX < minX {
+		return image.Rectangle{}
+	}
+	return image.Rect(minX, minY, maxX+1, maxY+1)
 }
 
 // renderTextImage draws wrapped text on a white canvas exactly
