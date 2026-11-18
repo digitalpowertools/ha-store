@@ -7,13 +7,15 @@ import (
 	"fmt"
 	"image"
 	"image/draw"
+	"sync"
 
 	_ "image/jpeg"
 	"image/png"
 	"strings"
 
 	"golang.org/x/image/font"
-	"golang.org/x/image/font/basicfont"
+	"golang.org/x/image/font/gofont/goregular"
+	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
 )
 
@@ -85,41 +87,77 @@ func FromImage(data []byte) (pix []bool, width int, err error) {
 	return pix, w, nil
 }
 
-// FromText renders plain text to pixels: wrapped to the paper width,
-// 7x13 bitmap font, white background.
+// FromText renders plain text to pixels: word-wrapped to the paper
+// width, white background.
+//
+// Size and typography match the original sirius server's default print
+// template (sirius/coding/default_template.html): Helvetica/Arial at
+// font-size 30px on the 384px-wide page, rendered headless and dithered.
+// We embed Go Regular (metrically similar to Helvetica) via
+// golang.org/x/image/font/gofont, so no font files are needed.
 func FromText(text string) (pix []bool, width int, err error) {
-	face := basicfont.Face7x13
-	const charW = 7
-	const lineH = 18
-	const maxChars = PaperWidth / charW
+	return FromTextSize(text, 0)
+}
 
-	// Word-wrap.
+// DefaultTextSize matches sirius's template body font-size (30px).
+const DefaultTextSize = 30
+
+// MaxTextSize caps the configurable size; above ~100px a single word
+// barely fits the paper width.
+const MaxTextSize = 100
+
+// TextMargin is the left/right padding in pixels (sirius's template
+// used 0, but a little breathing room reads better and avoids the
+// printhead's edge artifacts).
+const TextMargin = 8
+
+// FromTextSize renders text at an explicit pixel size; size <= 0
+// selects DefaultTextSize.
+func FromTextSize(text string, size float64) (pix []bool, width int, err error) {
+	if size <= 0 || size > MaxTextSize {
+		size = DefaultTextSize
+	}
+	face, err := newTextFace(size)
+	if err != nil {
+		return nil, 0, fmt.Errorf("text font: %w", err)
+	}
+	d := &font.Drawer{Face: face}
+	advance := func(s string) int { return d.MeasureString(s).Ceil() }
+
+	maxW := PaperWidth - 2*TextMargin
+	// CSS default line-height is ~1.2; round up a touch for the paper.
+	lineH := int(size*1.25) + 1
+
+	// Word-wrap by measured width.
 	var lines []string
 	for _, para := range strings.Split(text, "\n") {
-		if para == "" {
+		if strings.TrimSpace(para) == "" {
 			lines = append(lines, "")
 			continue
 		}
-		words := strings.Fields(para)
 		line := ""
-		for _, w := range words {
+		for _, w := range strings.Fields(para) {
 			candidate := w
 			if line != "" {
 				candidate = line + " " + w
 			}
-			if len(candidate) <= maxChars {
+			if advance(candidate) <= maxW {
 				line = candidate
 				continue
 			}
 			if line != "" {
 				lines = append(lines, line)
 			}
-			// Hard-break overlong words.
-			for len(w) > maxChars {
-				lines = append(lines, w[:maxChars])
-				w = w[maxChars:]
+			// Hard-break overlong words rune-wise.
+			line = ""
+			for _, r := range w {
+				if advance(line + string(r)) > maxW {
+					lines = append(lines, line)
+					line = string(r)
+				} else {
+					line += string(r)
+				}
 			}
-			line = w
 		}
 		if line != "" {
 			lines = append(lines, line)
@@ -137,19 +175,36 @@ func FromText(text string) (pix []bool, width int, err error) {
 	dst := image.NewRGBA(image.Rect(0, 0, PaperWidth, h))
 	draw.Draw(dst, dst.Bounds(), image.White, image.Point{}, draw.Src)
 
-	d := &font.Drawer{
-		Dst:  dst,
-		Src:  image.Black,
-		Face: face,
-	}
+	d.Dst, d.Src = dst, image.Black
 	for i, line := range lines {
-		d.Dot = fixed.P(0, i*lineH+13)
+		d.Dot = fixed.P(TextMargin, i*lineH+int(size))
 		d.DrawString(line)
 	}
 
 	// Round-trip through the image path; dithering of bilevel content
 	// is lossless.
 	return FromImage(encodePNG(dst))
+}
+
+var (
+	textFontOnce sync.Once
+	textFont     *opentype.Font
+	textFontErr  error
+)
+
+// newTextFace returns the embedded Go Regular at the given pixel size.
+func newTextFace(size float64) (font.Face, error) {
+	textFontOnce.Do(func() {
+		textFont, textFontErr = opentype.Parse(goregular.TTF)
+	})
+	if textFontErr != nil {
+		return nil, textFontErr
+	}
+	return opentype.NewFace(textFont, &opentype.FaceOptions{
+		Size:    size,
+		DPI:     72,
+		Hinting: font.HintingFull,
+	})
 }
 
 func encodePNG(img image.Image) []byte {

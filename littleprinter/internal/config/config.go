@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+
+	"littleprinter/internal/pixels"
 )
 
 type Config struct {
@@ -25,6 +27,10 @@ type Config struct {
 	// Optional: name used in log lines and status output.
 	Name string `json:"name"`
 
+	// TextSize is the text pixel size for /print text jobs (sirius's
+	// template used 30). 0 selects the default.
+	TextSize float64 `json:"text_size,omitempty"`
+
 	LogDebug bool `json:"log_debug"`
 }
 
@@ -42,6 +48,9 @@ func Load(path string) (*Config, error) {
 	}
 	if c.ClaimCode == "" {
 		return nil, fmt.Errorf("config: claim_code must be set (printed by the printer on reset)")
+	}
+	if c.TextSize <= 0 {
+		c.TextSize = pixels.DefaultTextSize
 	}
 	return c, nil
 }

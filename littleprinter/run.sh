@@ -3,6 +3,7 @@ set -euo pipefail
 
 CLAIM=$(bashio::config 'claim_code')
 PORT=$(bashio::config 'port')
+TEXT_SIZE=$(bashio::config 'text_size' 30)
 
 if bashio::var.is_empty "${CLAIM}"; then
     bashio::exit.nok "Set claim_code in the add-on options (printed by the printer on reset)"
@@ -16,9 +17,11 @@ jq -n \
     --arg claim "${CLAIM}" \
     --arg device "$(bashio::config 'device_address')" \
     --arg name "$(bashio::config 'name')" \
+    --argjson text_size "${TEXT_SIZE}" \
     --argjson debug "$(bashio::config 'log_debug')" \
     '{listen: $listen, claim_code: $claim,
-      device_address: $device, name: $name, log_debug: $debug}' \
+      device_address: $device, name: $name, text_size: $text_size,
+      log_debug: $debug}' \
     > /data/config.json
 
 bashio::log.info "Starting littleprinter on 0.0.0.0:${PORT} ..."

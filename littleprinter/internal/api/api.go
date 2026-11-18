@@ -68,7 +68,7 @@ func (s *Server) handlePrint(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(ct, "image/"):
 		pix, width, err = pixels.FromImage(body)
 	case strings.HasPrefix(ct, "text/"), ct == "":
-		pix, width, err = pixels.FromText(string(body))
+		pix, width, err = pixels.FromTextSize(string(body), s.cfg.TextSize)
 	default:
 		http.Error(w, "unsupported content type "+ct, http.StatusUnsupportedMediaType)
 		return
