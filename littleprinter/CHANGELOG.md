@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.2.1
+
+- Packaging: the supervisor now **pulls prebuilt images** from
+  `ghcr.io/digitalpowertools/littleprinter-{arch}` instead of compiling on
+  the device — updates no longer hammer the Pi's CPU/RAM/SD card (which
+  could make Home Assistant unresponsive for many minutes).
+- Images are built and pushed automatically by GitHub Actions on every
+  push to `main` (`.github/workflows/docker.yml`); `build-images.sh` is
+  the manual fallback.
+- First-time setup: after the first push, make the ghcr packages public
+  (GitHub → your profile → Packages → littleprinter-* → Package settings)
+  so the supervisor can pull them anonymously.
+
 ## 1.2.0
 
 - Text printed through the web UI and `/print` (text body) is now rendered

@@ -1,10 +1,12 @@
 # Home Assistant add-on manifest for littleprinter.
-# Local add-on: copy this whole folder to /usr/share/hassio/addons/local/littleprinter
+# Published as prebuilt images to ghcr.io (see .github/workflows/docker.yml) —
+# the supervisor pulls instead of compiling on-device.
 name: Little Printer
-version: "1.2.0"
+version: "1.2.1"
 slug: littleprinter
 description: BERG Little Printer server (Go sirius replacement) — bridge WebSocket, claiming and print API in one static binary.
 url: https://github.com/digitalpowertools/ha-store
+image: ghcr.io/digitalpowertools/littleprinter-{arch}
 arch:
   - armv7
   - aarch64

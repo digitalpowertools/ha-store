@@ -30,8 +30,11 @@ add-on repository — no file copying needed:
 4. Start the add-on. Check its logs for
    `littleprinter: listening on 0.0.0.0:8080`.
 
-**Updates:** edit the source, push to `ha-store`, then check
-**Settings → Add-ons → Updates** in the HA UI.
+**Updates:** edit the source, bump `version` in `config.yaml`, commit and
+push — GitHub Actions builds and publishes the images, then check
+**Settings → Add-ons → Updates** in the HA UI (wait for the action to
+finish; updates are a quick image pull now, no compiling).
+See `CHANGELOG.md` for version history.
 
 The **bridge** itself, being on the same LAN, talks to the HA device
 directly — point it at the HA host (IP or a hostname your local DNS
