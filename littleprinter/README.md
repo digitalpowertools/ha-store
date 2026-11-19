@@ -71,10 +71,53 @@ curl http://<ha-host>:8080/healthz
 curl -X POST -H "Content-Type: text/plain" \
      --data "hello from Home Assistant" \
      http://<ha-host>:8080/print
+
+# print HTML (see "HTML printing" below):
+curl -X POST -H "Content-Type: text/html" \
+     --data '<h1>Good Morning</h1><p>11°C 🌧</p>' \
+     http://<ha-host>:8080/print
 ```
 
 The API and the web UI at `/` are unauthenticated by design — they're only
 reachable inside the tailnet (or the LAN). Don't port-forward them.
+
+## HTML printing
+
+`POST /print` with `Content-Type: text/html` renders a pragmatic subset of
+HTML **directly to the pixel buffer** — no browser, no PNG intermediate. The
+layout model is a vertical stack of blocks; there is no flex, grid, floats
+or positioning, and colors are meaningless on 1-bit paper (unsupported CSS
+is ignored, unknown elements are transparent containers).
+
+Supported:
+
+- **Structure:** `h1`–`h4`, `p`, `br`, `hr`, `ul`/`ol`/`li`,
+  `blockquote`, `pre`, and simple `table`s (no colspan/rowspan; header
+  rows via `<th>` get a rule underneath; columns auto-shrink their font
+  when content doesn't fit the paper)
+- **Inline:** `b`/`strong`, `i`/`em`, `code`/`tt`, entities, and
+  **emoji** (embedded monochrome Noto Emoji; ZWJ sequences render as
+  their components)
+- **Images:** `<img src="data:image/png;base64,...">` — embedded data
+  only, external URLs are never fetched; images are scaled to the paper
+  width and Atkinson-dithered
+- **CSS** (via `style` attributes): `text-align`, `font-size: Npx`,
+  `margin(-top/bottom/left)`, `padding-left`,
+  `border-bottom: 1px dashed|solid` — the classic BERG rule look
+
+Example HA automation (see `examples/` for a full morning report):
+
+```yaml
+rest_command:
+  little_printer_html:
+    url: http://localhost:8080/print
+    method: POST
+    content_type: text/html
+    payload: >-
+      <h1 style="border-bottom:1px dashed #333">Good Morning</h1>
+      <p>{{ states('weather.home') | capitalize }},
+      {{ state_attr('weather.home', 'temperature') }}°C</p>
+```
 
 ## Notes
 

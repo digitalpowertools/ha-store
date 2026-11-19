@@ -1,0 +1,64 @@
+# Home Assistant: Little Printer morning report
+#
+# A daily 07:00 print that composes an HTML document from HA state and
+# sends it to the printer. The server renders the HTML subset directly;
+# see the add-on README for the exact supported tags and CSS.
+#
+# Setup:
+#   1. Add the rest_command and automation to your HA configuration
+#      (configuration.yaml or via packages).
+#   2. Adjust entity IDs to match your instance.
+#   3. Tweak the time trigger; "after sunrise" with a sunset offset
+#      also works if you don't want a fixed hour.
+#
+# The payload is a Jinja template — keep it valid HTML. HA collapses
+# nothing: multi-line payloads are fine, newlines render as spaces.
+
+rest_command:
+  little_printer_html:
+    url: http://localhost:8080/print
+    method: POST
+    content_type: text/html
+    # verify_ssl only matters for https endpoints
+    verify_ssl: false
+
+automation:
+  - id: little_printer_morning_report
+    alias: "Little Printer: morning report"
+    description: >
+      Print a daily morning report: weather, calendar, bins and a fun
+      footer. Runs at 07:00.
+    trigger:
+      - platform: time
+        at: "07:00:00"
+    action:
+      - service: rest_command.little_printer_html
+        data:
+          payload: >-
+            <h1 style="border-bottom:1px dashed #333">Good Morning</h1>
+            <p>{{ now().strftime('%A, %d %B') }} —
+            <i>{{ ['make it a good one', 'coffee first', 'almost the weekend'][now().weekday() % 3] }}</i></p>
+
+            <h3 style="border-bottom:1px solid #000">Weather</h3>
+            <p>{{ state_attr('weather.home', 'temperature') }}°C,
+            {{ states('weather.home') | replace('partlycloudy', '⛅') | replace('sunny', '☀️') | replace('cloudy', '☁️') | replace('rainy', '🌧') }}</p>
+
+            <h3 style="border-bottom:1px solid #000">Today</h3>
+            <ul>
+            {% for event in state_attr('calendar.home', 'events') | default([], true) %}
+              <li><b>{{ event.start | as_datetime | as_local | strftime('%H:%M') }}</b>
+              {{ event.summary }}</li>
+            {% else %}
+              <li><i>Nothing scheduled 🎉</i></li>
+            {% endfor %}
+            </ul>
+
+            <h3 style="border-bottom:1px solid #000">Bins</h3>
+            {% if states('sensor.bins_today') in ['general', 'recycling'] %}
+            <p>🗑 <b>{{ states('sensor.bins_today') }}</b> goes out today!</p>
+            {% else %}
+            <p>No bins today.</p>
+            {% endif %}
+
+            <p style="text-align:right">— printed at {{ now().strftime('%H:%M') }}</p>
+    mode: single

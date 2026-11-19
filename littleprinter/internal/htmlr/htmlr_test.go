@@ -2,7 +2,9 @@ package htmlr
 
 import (
 	"bytes"
+	"encoding/base64"
 	"image"
+	"image/color"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -122,6 +124,36 @@ mem  63%</pre>
 <p style="margin-top:8px">Updated 07:00 · <i>auto-generated</i></p>
 </body></html>`,
 	}
+
+	// Image sample: a generated chart PNG embedded as a data URI.
+	chart := image.NewRGBA(image.Rect(0, 0, 300, 120))
+	for x := 0; x < 300; x++ {
+		for y := 0; y < 120; y++ {
+			// Bars + a smooth gradient sky, to show dithering.
+			bar := (x/40)%2 == 0
+			bh := 30 + (x*37)%70
+			switch {
+			case bar && y > 120-bh:
+				chart.Set(x, y, image.Black)
+			case !bar && y > 120-bh:
+				g := uint8(60 + y)
+				chart.Set(x, y, color.Gray{Y: g})
+			default:
+				g := uint8(200 - x/3)
+				chart.Set(x, y, color.Gray{Y: g})
+			}
+		}
+	}
+	var chartBuf bytes.Buffer
+	if err := png.Encode(&chartBuf, chart); err != nil {
+		t.Fatal(err)
+	}
+	samples["image"] = `<!doctype html>
+<html><body>
+<h2>Temperature — 24h</h2>
+<p><img src="data:image/png;base64,` + base64.StdEncoding.EncodeToString(chartBuf.Bytes()) + `" alt="chart"></p>
+<p style="text-align:center">Peak <b>28.9°C</b> at 14:00 🌡</p>
+</body></html>`
 
 	for name, src := range samples {
 		img := renderPNG(t, name, src)

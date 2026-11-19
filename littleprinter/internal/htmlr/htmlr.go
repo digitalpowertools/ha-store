@@ -12,12 +12,16 @@ package htmlr
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"image"
 	"image/draw"
+	_ "image/jpeg"
 	"image/png"
 	"strconv"
 	"strings"
+
+	xdraw "golang.org/x/image/draw"
 
 	"littleprinter/internal/pixels"
 
@@ -67,6 +71,7 @@ type block struct {
 	indent      int    // extra left inset in px
 	quote       bool   // draw a blockquote bar in the gutter
 	table       *tableDef
+	img         image.Image // decoded <img> (data URIs only)
 	spaceBefore int
 	spaceAfter  int
 }
@@ -107,7 +112,7 @@ type builder struct {
 }
 
 func (b *builder) flush() {
-	if b.cur != nil && (len(b.cur.words) > 0 || b.cur.rule || b.cur.table != nil) {
+	if b.cur != nil && (len(b.cur.words) > 0 || b.cur.rule || b.cur.table != nil || b.cur.img != nil) {
 		b.blocks = append(b.blocks, *b.cur)
 	}
 	b.cur = nil
@@ -219,6 +224,19 @@ func (b *builder) walk(n *html.Node, st style) {
 		case "hr":
 			b.flush()
 			b.cur = &block{rule: true, size: DefaultSize, spaceBefore: 10, spaceAfter: 10}
+			return
+		case "img":
+			if im := decodeDataURI(n); im != nil {
+				b.flush()
+				b.cur = &block{
+					img:         im,
+					size:        DefaultSize,
+					spaceBefore: 8, spaceAfter: 8,
+					indent: b.indent, quote: b.quotes > 0,
+				}
+			}
+			// Unsupported src (external URLs are not fetched — the
+			// server is offline-friendly) is skipped silently.
 			return
 		case "ul", "ol":
 			b.flush()
@@ -342,6 +360,31 @@ func (b *builder) walk(n *html.Node, st style) {
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
 		b.walk(c, st)
 	}
+}
+
+// decodeDataURI decodes a data:-URI <img> src into an image. Only
+// embedded data is accepted — external URLs are never fetched.
+func decodeDataURI(n *html.Node) image.Image {
+	for _, attr := range n.Attr {
+		if attr.Key != "src" || !strings.HasPrefix(attr.Val, "data:") {
+			continue
+		}
+		rest, ok := strings.CutPrefix(attr.Val, "data:")
+		_, data, ok2 := strings.Cut(rest, ",")
+		if !ok || !ok2 {
+			return nil
+		}
+		raw, err := base64.StdEncoding.DecodeString(data)
+		if err != nil {
+			return nil
+		}
+		im, _, err := image.Decode(bytes.NewReader(raw))
+		if err != nil {
+			return nil
+		}
+		return im
+	}
+	return nil
 }
 
 // rawText concatenates all text nodes under n, preserving newlines.
@@ -650,6 +693,7 @@ func (b *builder) render() (*image.RGBA, error) {
 		// table state
 		cols     []int
 		rowLines [][][]laidLine // per row, per cell
+		imgW, imgH int
 	}
 	const borderGap = 5
 
@@ -660,6 +704,25 @@ func (b *builder) render() (*image.RGBA, error) {
 		lb := laidBlock{blk: blk}
 		if blk.rule {
 			height += blk.spaceBefore + 2 + blk.spaceAfter
+			laid = append(laid, lb)
+			continue
+		}
+		if blk.img != nil {
+			w := blk.img.Bounds().Dx()
+			h := blk.img.Bounds().Dy()
+			availW := maxW - blk.indent
+			if w > availW {
+				h = h * availW / w
+				w = availW
+			}
+			if h < 1 {
+				h = 1
+			}
+			lb.imgW, lb.imgH = w, h
+			height += blk.spaceBefore + h + blk.spaceAfter
+			if height > maxHeight {
+				return nil, fmt.Errorf("document too tall")
+			}
 			laid = append(laid, lb)
 			continue
 		}
@@ -756,6 +819,20 @@ func (b *builder) render() (*image.RGBA, error) {
 
 		// Quote bar: drawn per block, from first to last baseline.
 		quoteTop, quoteBottom := -1, -1
+
+		if blk.img != nil {
+			x := PageMargin + blk.indent
+			switch blk.align {
+			case 1:
+				x = PageMargin + blk.indent + (maxW-blk.indent-lb.imgW)/2
+			case 2:
+				x = PageMargin + maxW - lb.imgW
+			}
+			rect := image.Rect(x, y, x+lb.imgW, y+lb.imgH)
+			xdraw.ApproxBiLinear.Scale(dst, rect, blk.img, blk.img.Bounds(), draw.Src, nil)
+			y += lb.imgH + blk.spaceAfter
+			continue
+		}
 
 		if blk.table != nil {
 			for ri, row := range blk.table.rows {
