@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.1
+
+- **Fix: back-to-back prints could be silently dropped.** The printer
+  executes one command at a time and ignores a second command sent
+  while paper is moving — so the daily report's sudoku never printed.
+  The bridge hub now tracks in-flight prints, queues overlapping jobs,
+  and flushes them on the next device event (heartbeat or did-print).
+- Device event payloads are now logged with their event code, to help
+  identify `DID_PRINT` on real hardware.
+
 ## 1.4.0
 
 - **Daily sudoku**: `POST/GET /print/sudoku` generates and prints a

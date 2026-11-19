@@ -7,6 +7,7 @@ package bridge
 
 import (
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,6 +36,7 @@ type Hub struct {
 	lastSeen     time.Time
 	commandID    uint32
 	pendingPrint [][]byte // encoded binary payloads, queued while device is offline
+	printing     bool     // a job was sent and its DID_PRINT hasn't arrived yet
 }
 
 func NewHub(cfg *config.Config) *Hub {
@@ -145,6 +147,7 @@ type envelope struct {
 	DeviceAddress string `json:"device_address"`
 	CommandID     uint32 `json:"command_id"`
 	ReturnCode    *int   `json:"return_code"`
+	BinaryPayload string `json:"binary_payload"`
 	JSONPayload   *struct {
 		Name            string `json:"name"`
 		DeviceAddress   string `json:"device_address"`
@@ -176,7 +179,32 @@ func (h *Hub) handleEvent(conn *websocket.Conn, env *envelope) {
 		}
 
 	case "DeviceEvent":
-		log.Printf("bridge: device event (device %s)", env.DeviceAddress)
+		// The binary payload starts with <HII>: event code, command
+		// id, payload length. We log the code so DID_PRINT's value can
+		// be identified from the logs; any device event also proves the
+		// printer is alive, so a print sent but not yet finished may
+		// now have completed.
+		if env.BinaryPayload != "" {
+			if raw, err := base64.StdEncoding.DecodeString(env.BinaryPayload); err == nil && len(raw) >= 2 {
+				code := binary.LittleEndian.Uint16(raw[:2])
+				log.Printf("bridge: device event (device %s) code=%d", env.DeviceAddress, code)
+			} else {
+				log.Printf("bridge: device event (device %s)", env.DeviceAddress)
+			}
+		} else {
+			log.Printf("bridge: device event (device %s)", env.DeviceAddress)
+		}
+		// A device event (heartbeat/did_print/power_on) means the
+		// previous job is no longer blocking: the printer prints one
+		// command at a time and silently drops overlapping ones, so
+		// back-to-back prints must be queued until the paper moves.
+		h.mu.Lock()
+		wasPrinting := h.printing
+		h.printing = false
+		h.mu.Unlock()
+		if wasPrinting && len(h.pendingPrint) > 0 {
+			h.flushPending(conn)
+		}
 
 	case "DeviceCommandResponse", "BridgeCommandResponse":
 		rc := -1
@@ -273,6 +301,15 @@ func (h *Hub) Print(pix []bool, width int, withFace bool) (sent bool, id uint32,
 		log.Printf("print: device offline, queued (id %d)", id)
 		return false, id, nil
 	}
+	if h.printing {
+		// The printer prints one command at a time; a second command
+		// sent while paper is moving is silently dropped. Queue and
+		// flush on the next device event (DID_PRINT or heartbeat).
+		h.pendingPrint = append(h.pendingPrint, binary)
+		log.Printf("print: device busy, queued (id %d)", id)
+		return false, id, nil
+	}
+	h.printing = true
 
 	msg := h.deviceCommand(h.deviceAddr, binary, id)
 	if err := h.conn.WriteJSON(msg); err != nil {
