@@ -119,6 +119,98 @@ rest_command:
       {{ state_attr('weather.home', 'temperature') }}°C</p>
 ```
 
+## A "start of the day" report (weather + sun)
+
+This is a complete walkthrough for a small daily report: today's date, the
+current weather, and when the sun rises and sets. Everything is composed in
+Home Assistant — the printer server stays a dumb renderer. Later sections
+(calendar, bins, transit…) can be added the same way: one HTML block per
+topic.
+
+### 1. Add the rest command
+
+In `configuration.yaml` (or a package file):
+
+```yaml
+rest_command:
+  little_printer_html:
+    url: http://localhost:8080/print
+    method: POST
+    content_type: text/html
+    verify_ssl: false
+```
+
+If the add-on is reached through the Tailscale Serve proxy, use that
+`https://…ts.net` URL instead — any host that can reach `/print` works.
+
+### 2. Add the automation
+
+The trigger prints at 07:00 daily. The payload is a Jinja template; keep it
+valid HTML and lean on `<h3>` + `border-bottom` for section rules.
+
+```yaml
+automation:
+  - id: little_printer_start_of_day
+    alias: "Little Printer: start of the day"
+    trigger:
+      - platform: time
+        at: "07:00:00"
+    action:
+      - service: rest_command.little_printer_html
+        data:
+          payload: >-
+            <h1 style="border-bottom:1px dashed #333">Start of the Day</h1>
+
+            <p><b>{{ now().strftime('%A, %d %B %Y') }}</b></p>
+
+            <h3 style="border-bottom:1px solid #000">Weather</h3>
+            <p>Now: {{ state_attr('weather.home', 'temperature') }}°C,
+            {{ states('weather.home') | capitalize }}</p>
+            {% set hi = state_attr('weather.home', 'forecast') %}
+            {% if hi %}
+            <p>Today: high
+            {{ (hi | selectattr('datetime', 'contains', now().strftime('%Y-%m-%d')) | list | first | default({})) .temperature | default('?') }}°C</p>
+            {% endif %}
+
+            <h3 style="border-bottom:1px solid #000">Sun</h3>
+            <p>🌅 {{ state_attr('sun.sun', 'next_rising') | as_datetime | as_local | strftime('%H:%M') }}
+            · 🌇 {{ state_attr('sun.sun', 'next_setting') | as_datetime | as_local | strftime('%H:%M') }}</p>
+            {% set rise = state_attr('sun.sun', 'next_rising') | as_datetime %}
+            {% set set = state_attr('sun.sun', 'next_setting') | as_datetime %}
+            <p>Daylight: {{ ((set - rise).total_seconds() / 3600) | round(1) }} h</p>
+
+            <p style="text-align:right">{{ ['Have a great day', 'Make it count', 'Coffee first'] [now().weekday() % 3] }} ☀️</p>
+    mode: single
+```
+
+A note on the sun math: `sun.sun`'s `next_rising`/`next_setting` are the
+*next* events after *now*, so early-morning prints show today's sunrise but
+tonight's sunset — that's the useful pairing for a morning report. The
+"Daylight" line is computed from the same pair so the numbers always agree.
+
+### 3. Test it without waiting for 07:00
+
+In **Developer Tools → Actions**, run `rest_command.little_printer_html`
+with the payload from the automation (paste it as `payload:` under the
+service data). Tweak the template until the paper looks right, then
+reload automations.
+
+If the printer is offline the print is **queued automatically** and prints
+when the bridge reconnects — a 07:00 report isn't lost if the bridge was
+asleep.
+
+### 4. Growing the report
+
+Each topic is just another block; sections wrap to a new page of paper
+automatically (the buffer is up to 10000px tall):
+
+- **Calendar:** loop over `state_attr('calendar.home', 'events')` — see
+  `examples/morning_report.yaml` for a working `<ul>` loop with times.
+- **Bins / waste:** a `{% if %}` on your waste-collection sensor.
+- **Charts:** any PNG can be inlined as a base64 data URI — generate one
+  with the **apexcharts-card → camera snapshot** trick or a small script
+  that renders `history_stats` data.
+
 ## Notes
 
 - The service listens on `0.0.0.0:<port>` inside the add-on because the
