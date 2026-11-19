@@ -12,6 +12,7 @@ import (
 
 	"littleprinter/internal/bridge"
 	"littleprinter/internal/config"
+	"littleprinter/internal/htmlr"
 	"littleprinter/internal/pixels"
 	"littleprinter/internal/web"
 )
@@ -51,6 +52,9 @@ func (s *Server) Routes() http.Handler {
 //
 //   - image/png, image/jpeg: scaled/cropped to the paper width, dithered
 //
+//   - text/html: rendered from the supported HTML subset directly to
+//     the pixel buffer (see internal/htmlr)
+//
 //   - text/plain: wrapped and rendered with a bitmap font
 //
 //   - (none): no auth; the service is meant to be reached over Tailscale only
@@ -79,6 +83,8 @@ func (s *Server) handlePrint(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case strings.HasPrefix(ct, "image/"):
 		pix, width, err = pixels.FromImage(body)
+	case strings.HasPrefix(ct, "text/html"):
+		pix, width, err = htmlr.FromHTML(body)
 	case strings.HasPrefix(ct, "text/"), ct == "":
 		if bubble {
 			pix, width, err = pixels.FromTextBubble(string(body), s.cfg.TextSize)
