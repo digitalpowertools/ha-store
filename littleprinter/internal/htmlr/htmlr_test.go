@@ -103,6 +103,24 @@ func TestVisualSamples(t *testing.T) {
 <p>foo<b>bar</b>baz glued tokens must <b>not</b> gain spaces, while spaced words do wrap normally across multiple lines like this sentence does.</p>
 <p style="text-align:center"><b>centered bold</b></p>
 </body></html>`,
+
+		"data": `<!doctype html>
+<html><body>
+<h1 style="border-bottom:1px dashed #333">Sensor Report</h1>
+<table>
+  <tr><th>Room</th><th>Temp</th><th>Humidity</th></tr>
+  <tr><td>Living room</td><td>21.5°C</td><td>44%</td></tr>
+  <tr><td>Bedroom</td><td>18.2°C</td><td>51%</td></tr>
+  <tr><td>Greenhouse</td><td>28.9°C 🌡</td><td>78%</td></tr>
+</table>
+<h3 style="border-bottom:1px solid #000">Energy</h3>
+<p>Solar: <b>2.4 kW</b> ☀️ · Grid: <b>-0.3 kW</b></p>
+<blockquote><p>Nothing is more permanent than a temporary solution.</p></blockquote>
+<pre>up 14 days
+cpu  12%
+mem  63%</pre>
+<p style="margin-top:8px">Updated 07:00 · <i>auto-generated</i></p>
+</body></html>`,
 	}
 
 	for name, src := range samples {
