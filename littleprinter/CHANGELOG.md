@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.0
+
+- **HTML printing**: `POST /print` with `Content-Type: text/html` renders
+  a pragmatic HTML subset directly to the pixel buffer — no browser, no
+  PNG intermediate. Supported: headings, paragraphs, lists, rules,
+  blockquotes, `pre` blocks, simple tables (with automatic font shrink),
+  inline bold/italic/mono, `text-align`/`font-size`/margins/`border-bottom`
+  (dashed rules!), and `<img>` with base64 data URIs (dithered). Emoji
+  render via an embedded monochrome Noto Emoji font (~2 MB added to the
+  binary). See the README's "HTML printing" section for the exact subset,
+  plus a start-of-the-day report walkthrough for Home Assistant.
+
 ## 1.2.3
 
 - **Custom personalities**: new Personality tab in the web UI (and
