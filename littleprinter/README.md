@@ -105,6 +105,22 @@ Supported:
   `margin(-top/bottom/left)`, `padding-left`,
   `border-bottom: 1px dashed|solid` — the classic BERG rule look
 
+## Daily sudoku
+
+`POST /print/sudoku` generates and prints a sudoku directly — no image
+round-trip, crisp grid lines and digits drawn straight onto the pixel
+buffer. The puzzle is derived from the date, so it's the same puzzle
+all day and requires no storage:
+
+```bash
+curl -X POST 'http://<ha-host>:8080/print/sudoku?difficulty=hard'
+curl 'http://<ha-host>:8080/sudoku.png' -o today.png   # preview, no print
+curl -X POST 'http://<ha-host>:8080/print/sudoku?solution=1&date=2026-11-19'  # reprint yesterday's solution
+```
+
+Query params: `difficulty=easy|medium|hard` (default medium),
+`date=YYYY-MM-DD`, `solution=1`.
+
 Example HA automation (see `examples/` for a full morning report):
 
 ```yaml

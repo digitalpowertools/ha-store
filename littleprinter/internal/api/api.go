@@ -9,11 +9,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"littleprinter/internal/bridge"
 	"littleprinter/internal/config"
 	"littleprinter/internal/htmlr"
 	"littleprinter/internal/pixels"
+	"littleprinter/internal/sudoku"
 	"littleprinter/internal/web"
 )
 
@@ -30,6 +32,9 @@ func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	web.Routes(mux)
 	mux.HandleFunc("POST /print", s.handlePrint)
+	mux.HandleFunc("POST /print/sudoku", s.handleSudokuPrint)
+	mux.HandleFunc("GET /print/sudoku", s.handleSudokuPrint) // convenience: GET also prints
+	mux.HandleFunc("GET /sudoku.png", s.handleSudokuPNG)
 	mux.HandleFunc("GET /status", s.handleStatus)
 	mux.HandleFunc("POST /personality", s.handlePersonalityUpload)
 	mux.HandleFunc("POST /personality/push", s.handlePersonalityPush)
@@ -44,6 +49,83 @@ func (s *Server) Routes() http.Handler {
 		_, _ = w.Write([]byte("ok"))
 	})
 	return mux
+}
+
+// handleSudokuPrint generates and prints the daily sudoku. The puzzle
+// is derived from the date (and difficulty), so it is deterministic:
+// same day, same puzzle. Optional query params: difficulty=easy|medium|hard,
+// date=YYYY-MM-DD (for reprints), solution=1 (print the solution).
+func (s *Server) handleSudokuPrint(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	diff, err := sudoku.DifficultyByName(q.Get("difficulty"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	date := q.Get("date")
+	if date == "" {
+		date = time.Now().Format("2006-01-02")
+	} else if _, err := time.Parse("2006-01-02", date); err != nil {
+		http.Error(w, "invalid date (want YYYY-MM-DD): "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	solution := q.Get("solution") == "1"
+
+	puzzle, solved := sudoku.Generate(sudoku.SeedFor(date, diff.Name), diff.Givens)
+	grid := puzzle
+	if solution {
+		grid = solved
+	}
+	pix, width, err := pixels.FromImage(sudoku.RenderPNG(&grid, date, diff.Name, solution))
+	if err != nil {
+		http.Error(w, "render: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	withFace := q.Get("face") != "no"
+	sent, id, err := s.hub.Print(pix, width, withFace)
+	if err != nil {
+		http.Error(w, "send: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	status := "sent"
+	if !sent {
+		status = "queued"
+	}
+	log.Printf("api: sudoku date=%s difficulty=%s solution=%v id=%d status=%s",
+		date, diff.Name, solution, id, status)
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status":     status,
+		"id":         id,
+		"date":       date,
+		"difficulty": diff.Name,
+		"puzzle":     sudoku.PuzzleNumber(date),
+	})
+}
+
+// handleSudokuPNG serves the daily puzzle as a PNG (for previews in
+// the web UI or debugging) — nothing is printed.
+func (s *Server) handleSudokuPNG(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	diff, err := sudoku.DifficultyByName(q.Get("difficulty"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	date := q.Get("date")
+	if date == "" {
+		date = time.Now().Format("2006-01-02")
+	}
+	solution := q.Get("solution") == "1"
+	puzzle, solved := sudoku.Generate(sudoku.SeedFor(date, diff.Name), diff.Givens)
+	grid := puzzle
+	if solution {
+		grid = solved
+	}
+	w.Header().Set("Content-Type", "image/png")
+	_, _ = w.Write(sudoku.RenderPNG(&grid, date, diff.Name, solution))
 }
 
 // handlePrint accepts a print job.

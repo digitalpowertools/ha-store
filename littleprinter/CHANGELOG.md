@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.0
+
+- **Daily sudoku**: `POST/GET /print/sudoku` generates and prints a
+  sudoku directly on the pixel canvas (crisp grid, no dithering
+  artifacts). Puzzles are deterministic per date and difficulty —
+  `?difficulty=easy|medium|hard`, `?date=YYYY-MM-DD` for reprints,
+  `?solution=1` to print the solution. All puzzles have exactly one
+  solution (verified by construction). `GET /sudoku.png` previews
+  without printing. No external services: the puzzle is derived from
+  a hash of the date.
+
 ## 1.3.0
 
 - **HTML printing**: `POST /print` with `Content-Type: text/html` renders
