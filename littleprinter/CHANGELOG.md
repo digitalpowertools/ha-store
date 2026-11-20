@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.4.2
+
+- **Fix: add-on crash on concurrent prints.** Event-driven queue
+  flushes (added in 1.4.1) could overlap API-driven prints, and
+  gorilla/websocket panics on concurrent writes to the same
+  connection — taking the whole add-on down. All bridge-websocket
+  writes are now serialized through a dedicated write mutex.
+- **Fix: photo prints could OOM the bridge.** A dense photo at full
+  paper height encodes to ~560 KB of payload, which the 29 MB-RAM
+  bridge daemon may not survive. Photos are now auto-scaled until the
+  payload fits a 256 KB budget (text/reports are mostly white and
+  unaffected), and a hard 512 KB guard rejects anything larger.
+
 ## 1.4.1
 
 - **Fix: back-to-back prints could be silently dropped.** The printer

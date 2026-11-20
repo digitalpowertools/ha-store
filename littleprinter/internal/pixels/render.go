@@ -13,6 +13,7 @@ import (
 	"image/png"
 	"strings"
 
+	xdraw "golang.org/x/image/draw"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/gofont/goregular"
 	"golang.org/x/image/font/opentype"
@@ -85,6 +86,60 @@ func FromImage(data []byte) (pix []bool, width int, err error) {
 		}
 	}
 	return pix, w, nil
+}
+
+// FromImageScaled is FromImage with a payload budget: if the encoded
+// print payload would exceed maxPayload bytes (dense photos at full
+// paper height reach ~560 KB, which can OOM the 29 MB bridge), the
+// image is progressively downscaled until it fits. Mostly-white content
+// (text, reports) compresses to a fraction of that and keeps its size.
+func FromImageScaled(data []byte, maxPayload int) (pix []bool, width int, err error) {
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, 0, fmt.Errorf("decode image: %w", err)
+	}
+
+	b := img.Bounds()
+	w, h := b.Dx(), b.Dy()
+	if w > PaperWidth {
+		w = PaperWidth
+	}
+	if h > maxHeight {
+		h = maxHeight
+	}
+
+	for attempt := 0; ; attempt++ {
+		scaled := scaleTo(img, w, h)
+		pix, width, err = FromImage(encodePNG(scaled))
+		if err != nil {
+			return nil, 0, err
+		}
+		payload := EncodePrint(CmdSetDeliveryAndPrint, pix, width, 0)
+		if len(payload) <= maxPayload || attempt >= 8 || w < 96 || h < 96 {
+			return pix, width, nil
+		}
+		// Shrink 25% per attempt until the payload fits.
+		w = w * 3 / 4
+		h = h * 3 / 4
+		if w > PaperWidth {
+			w = PaperWidth
+		}
+	}
+}
+
+// scaleTo resizes img to exactly w x h (approximate bilinear; the
+// Atkinson dithering downstream hides resampling artifacts).
+func scaleTo(img image.Image, w, h int) *image.RGBA {
+	b := img.Bounds()
+	if b.Dx() == w && b.Dy() == h && b.Min.X == 0 && b.Min.Y == 0 {
+		// Already the right size; still copy to RGBA for a uniform path.
+		out := image.NewRGBA(image.Rect(0, 0, w, h))
+		draw.Draw(out, out.Bounds(), img, b.Min, draw.Src)
+		return out
+	}
+	out := image.NewRGBA(image.Rect(0, 0, w, h))
+	xdraw.ApproxBiLinear.Scale(out, out.Bounds(), img, b, draw.Src, nil)
+	return out
 }
 
 // FromText renders plain text to pixels: word-wrapped to the paper

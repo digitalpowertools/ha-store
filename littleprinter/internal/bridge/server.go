@@ -37,6 +37,12 @@ type Hub struct {
 	commandID    uint32
 	pendingPrint [][]byte // encoded binary payloads, queued while device is offline
 	printing     bool     // a job was sent and its DID_PRINT hasn't arrived yet
+
+	// writeMu serializes all writes to the bridge websocket. The
+	// hub mutex is NOT held during writes (flushes can be slow), so
+	// API-driven prints and event-driven flushes would otherwise write
+	// concurrently — gorilla/websocket panics on that.
+	writeMu sync.Mutex
 }
 
 func NewHub(cfg *config.Config) *Hub {
@@ -293,6 +299,9 @@ func (h *Hub) Print(pix []bool, width int, withFace bool) (sent bool, id uint32,
 		cmd = pixels.CmdSetDeliveryAndPrintNoFace
 	}
 	binary := pixels.EncodePrint(cmd, pix, width, id)
+	if len(binary) > 512*1024 {
+		return false, id, fmt.Errorf("payload too large (%d KB); reduce the content and retry", len(binary)/1024)
+	}
 
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -312,11 +321,20 @@ func (h *Hub) Print(pix []bool, width int, withFace bool) (sent bool, id uint32,
 	h.printing = true
 
 	msg := h.deviceCommand(h.deviceAddr, binary, id)
-	if err := h.conn.WriteJSON(msg); err != nil {
+	if err := h.write(h.conn, msg); err != nil {
 		return false, id, err
 	}
 	log.Printf("print: sent to device %s (id %d)", h.deviceAddr, id)
 	return true, id, nil
+}
+
+// write serializes a JSON message onto the bridge websocket. All
+// writes must go through this: gorilla/websocket panics on concurrent
+// writes, and the read loop's flushes can overlap API-driven sends.
+func (h *Hub) write(conn *websocket.Conn, msg any) error {
+	h.writeMu.Lock()
+	defer h.writeMu.Unlock()
+	return conn.WriteJSON(msg)
 }
 
 // flushPending sends queued prints when the device comes online.
@@ -332,7 +350,7 @@ func (h *Hub) flushPending(conn *websocket.Conn) {
 		// Re-stamp the command id (EncodePrint embeds it for acks).
 		binary = rewriteCommandID(binary, id)
 		msg := h.deviceCommand(h.deviceAddr, binary, id)
-		if err := conn.WriteJSON(msg); err != nil {
+		if err := h.write(conn, msg); err != nil {
 			log.Printf("print: failed to flush queued job: %v", err)
 			return
 		}
@@ -364,7 +382,7 @@ func (h *Hub) SendBinary(binary []byte) error {
 	if h.conn == nil || h.deviceAddr == "" {
 		return errors.New("printer offline")
 	}
-	if err := h.conn.WriteJSON(h.deviceCommand(h.deviceAddr, binary, id)); err != nil {
+	if err := h.write(h.conn, h.deviceCommand(h.deviceAddr, binary, id)); err != nil {
 		return err
 	}
 	log.Printf("command: sent binary command to device %s (id %d)", h.deviceAddr, id)
@@ -413,7 +431,7 @@ func (h *Hub) pushStoredPersonality(conn *websocket.Conn) {
 	}
 	id := h.nextCommandID()
 	binary := rewriteCommandID(pixels.EncodePersonality(imgs[0], imgs[1], imgs[2], imgs[3], width, 0), id)
-	if err := conn.WriteJSON(h.deviceCommand(h.deviceAddr, binary, id)); err != nil {
+	if err := h.write(conn, h.deviceCommand(h.deviceAddr, binary, id)); err != nil {
 		log.Printf("personality: push failed: %v", err)
 		return
 	}
@@ -432,7 +450,7 @@ func (h *Hub) deviceCommand(deviceAddr string, binary []byte, id uint32) map[str
 }
 
 func (h *Hub) send(conn *websocket.Conn, msg any) {
-	if err := conn.WriteJSON(msg); err != nil {
+	if err := h.write(conn, msg); err != nil {
 		log.Printf("bridge: send failed: %v", err)
 	}
 }

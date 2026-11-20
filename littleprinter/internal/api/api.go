@@ -164,7 +164,10 @@ func (s *Server) handlePrint(w http.ResponseWriter, r *http.Request) {
 	var width int
 	switch {
 	case strings.HasPrefix(ct, "image/"):
-		pix, width, err = pixels.FromImage(body)
+		// Photos get auto-scaled to a payload budget: dense images at
+		// full paper height produce ~560KB payloads, which can OOM the
+		// bridge's 29MB-RAM daemon.
+		pix, width, err = pixels.FromImageScaled(body, 256*1024)
 	case strings.HasPrefix(ct, "text/html"):
 		pix, width, err = htmlr.FromHTML(body)
 	case strings.HasPrefix(ct, "text/"), ct == "":
